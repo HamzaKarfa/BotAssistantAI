@@ -1,0 +1,87 @@
+import Tool from "../interfaces/Tool.js";
+import * as Shared from "openai/src/resources/shared";
+import { warn, debug } from "../utils/log.js";
+import OpenAI from "openai";
+import config from "../config.js";
+import * as fs from "fs";
+import { createAudioPlayer, createAudioResource } from "@discordjs/voice";
+import { Readable } from "stream";
+import { PupeeterHelper } from "./Voice/PupeeterHelper.js";
+
+type VocalResult = {
+    text: string,
+    confidence: number, 
+    duration: number,
+    end: number,
+    start: number,
+    words: any,
+}
+type TextToSpeechArgs = {
+    message: string,
+}
+
+export default class TextToSpeech implements Tool {
+
+
+    private client: OpenAI;
+
+    constructor() {
+        this.client = new OpenAI({apiKey: config.OPENAI_API_KEY})
+    }
+
+    async handle(args: TextToSpeechArgs): Promise<string> {
+        return new Promise(async (resolve, reject) => {
+            debug("Vocal : " + args.message);
+            if (!args.message) {
+                reject("il n'y a pas de message");
+                return ;
+            }
+            const response = await this.client.audio.speech.create({
+                model: "tts-1",
+                voice: "nova",
+                input: Buffer.from(args.message, 'utf8').toString(),
+              });
+            const buffer = Buffer.from(await response.arrayBuffer());
+            fs.writeFile('./storage/audio/response.mp3', buffer, async (err) => {
+                if (err) {
+                    reject("Une erreur s'est produite lors de l'écriture du fichier: " +  err.message);
+                    console.error("Une erreur s'est produite lors de l'écriture du fichier:", err);
+                } else {
+                    console.log('Le fichier MP3 a été sauvegardé avec succès!');
+                    const connection = PupeeterHelper.voiceConnection;
+                    const resource = createAudioResource('./storage/audio/response.mp3');
+                    const player = createAudioPlayer();
+                    connection.subscribe(player);
+                    player.play(resource);
+                    resolve("Le fichier MP3 a été sauvegardé avec succès!");
+                }
+            });
+        });
+    }
+
+    definition(): Shared.FunctionDefinition{
+        return {
+            "name": this.constructor.name,
+            "description": "Reponse vocale de kafbot",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "Text response to speech tool"
+                    },
+                },
+                "required": [
+                    "message",
+                ]
+            }
+        }
+    }
+
+    getEmbed(args: any) {
+        return {
+            "title": "Préparation de la réponse de kafbot",
+            "description": "Je vais préparer ma réponse",
+        }
+    }
+}

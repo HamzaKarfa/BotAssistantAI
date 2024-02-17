@@ -1,0 +1,86 @@
+import Tool from "../../interfaces/Tool";
+import * as Shared from "openai/src/resources/shared";
+import {EmbedData} from "discord.js";
+import {debug} from "../../utils/log"
+import OpenAI from "openai";
+import config from "../../config";
+import * as fs from "fs";
+import { Readable } from 'stream';
+import { finished } from 'stream/promises';
+
+type DownloadFileForUseWithRetrievalArgs = {
+    url: string
+    fileExtension: string
+}
+
+export default class DownloadFileForUseWithRetrieval implements Tool {
+    private client: OpenAI;
+
+    constructor() {
+        this.client = new OpenAI({apiKey: config.OPENAI_API_KEY!})
+    }
+
+    async handle(args: DownloadFileForUseWithRetrievalArgs): Promise<string> {
+        const url = args.url
+        const fileExtension = args.fileExtension;
+        debug("DownloadFileForUseWithRetrieval");
+        debug("URL", url);
+        const response = await fetch(url)
+        if(!response.body) {
+            return "Unable to download file."
+        }
+
+        const arrayBufferView = new Uint8Array(await response.arrayBuffer());
+        // TODO: Adapter le chemin de sauvegarde pour qu'il fonctionne sur windows
+        // TODO: Faire une fonction pour l'upload de fichier (sur le serveur)
+        const tmpFilePath = "/tmp/" + Math.random().toString(36).substring(7) + "." + fileExtension;
+        fs.writeFileSync(tmpFilePath, arrayBufferView);
+        // Fonctionne au moins jusqu'ici
+
+        const tmpFileData = fs.readFileSync(tmpFilePath);
+        const blob = new Blob([tmpFileData], { type: 'application/pdf' });
+
+        const fileName = tmpFilePath.split('/').pop();
+        const fileToUpload = new File([blob], fileName);
+
+        // TODO: Le fichier est uploadé mais il n'est pas utilisable par l'API
+        const file = await this.client.files.create({
+            file: fileToUpload,
+            purpose: "assistants"
+        });
+
+        // TODO: Ajuster le prompt pour qu'il soit plus adapté. Il faut lui dire d'utiliser un outil pour supprimer le fichier après utilisation. (voir API)
+        return "File downloaded and ready to be used with the retrieval tool. File ID: " + file.id + ".\n" +
+            "File name: " + file.filename
+    }
+
+    definition(): Shared.FunctionDefinition {
+        return {
+            name: this.constructor.name,
+            description: "Download a file for use with the retrieval tool. This is particularly useful for discord attachments.",
+            parameters: {
+                type: "object",
+                properties: {
+                    "url": {
+                        type: "string",
+                        description: "The URL of the asset to download"
+                    },
+                    "fileExtension": {
+                        type: "string",
+                        description: "The of the file to download. This is used to determine the file type."
+                    },
+                },
+                required: ["url", "file-extension"]
+            }
+        }
+    }
+
+    getEmbed(args: DownloadFileForUseWithRetrievalArgs): EmbedData {
+        debug("DownloadFileForUseWithRetrieval.getEmbed", args);
+
+        return {
+            "title": "🌎 Téléchargement de pièce jointe",
+            "description": args.url
+        }
+    }
+}

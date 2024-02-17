@@ -1,0 +1,6 @@
+{
+  "watch": ["src/", ".env"],
+  "ext": "ts,js",
+  "ignore": ["src/**/*.test.ts"],
+  "exec": "swc src -s true -d dist --delete-dir-on-start && tsc-alias && node dist/src/index.js"
+}

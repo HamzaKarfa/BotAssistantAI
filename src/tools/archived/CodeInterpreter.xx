@@ -1,0 +1,90 @@
+import Tool from "../interfaces/Tool.js";
+import * as Shared from "openai/src/resources/shared";
+import {CodeInterpreter as E2B} from "@e2b/sdk";
+
+type CodeInterpreterArgs = {
+    code: string,
+    pip_dependencies?: string[],
+    system_dependencies?: string[],
+    files?: string[],
+}
+
+export default class CodeInterpreter implements Tool {
+    async handle(args: CodeInterpreterArgs): Promise<string> {
+        const sandbox = await E2B.create();
+
+        await sandbox.installPythonPackages('PdfReader');
+
+        if(args.pip_dependencies) {
+            await sandbox.installPythonPackages(args.pip_dependencies);
+        }
+
+        if(args.system_dependencies) {
+            await sandbox.installSystemPackages(args.system_dependencies);
+        }
+
+        const { stdout, stderr, artifacts } =  await sandbox.runPython(args.code);
+        /*for (const artifact of artifacts) {
+            const file = await sandbox.downloadFile(artifact.path)
+            // TODO: inserts the file in the discord channel
+        }*/
+
+        await sandbox.close();
+
+        return `
+            STDOUT:
+            ${stdout}
+            #######
+            STDERR:
+            ${stderr}
+        `
+    }
+
+    definition(): Shared.FunctionDefinition{
+        return {
+            name: this.constructor.name,
+            description: `A sandbox for executing any Python code and returns the result.\n
+            Optionally install dependencies or retrieve generated files.\n
+            For PDF File Reading, use the preinstalled PdfReader package.\n
+            If there is an error you have to try other ways to achieve your goal, after 3 unsuccessful attempts you had to give up`,
+            parameters: {
+                type: 'object',
+                properties: {
+                    code: {
+                        type: 'string',
+                        description: 'The Python code to execute.',
+                    },
+                    pip_dependencies: {
+                        type: 'array',
+                        description: 'Dependencies to install with pip.',
+                        items: {
+                            type: 'string',
+                        },
+                    },
+                    system_dependencies: {
+                        type: 'array',
+                        description: 'Dependencies to install with apt.',
+                        items: {
+                            type: 'string',
+                        },
+                    },
+                    files: {
+                        type: 'array',
+                        description: 'Files name to retrieve after execution.',
+                        items: {
+                            type: 'string',
+                        },
+                    },
+                },
+                required: ['code'],
+            }
+        }
+    }
+
+    getEmbed(args: CodeInterpreterArgs) {
+        return {
+            "title": "🐍 Code Interpreter",
+            "description": "Code:\n" + "```python\n" + args.code + "\n```"
+        }
+    }
+}

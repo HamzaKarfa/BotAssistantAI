@@ -1,0 +1,125 @@
+import * as Shared from "openai/src/resources/shared";
+import { Message } from "discord.js";
+import ContextAwareTool from "../interfaces/ContextAwareTool.js";
+import { joinVoiceChannel, StreamType, EndBehaviorType, entersState, VoiceConnectionStatus, AudioPlayer } from '@discordjs/voice';
+import fs from "fs";
+import OpusEncoder from '@discordjs/opus';
+import { PupeeterHelper } from "./Voice/PupeeterHelper.js";
+
+
+type ConnectBotToChannelResult = {
+    text: string,
+    confidence: number, 
+    duration: number,
+    end: number,
+    start: number,
+    words: any,
+}
+type ConnectBotToChannelArgs = {
+}
+
+export default class VocalSearched extends ContextAwareTool {
+    async handle(): Promise<string> {
+        return new Promise(async (resolve, reject) => {
+            if (!this.discordContext) return ;
+            const channel = await PupeeterHelper.searchVocalChannel(this.discordContext)
+
+            if (!channel) {
+                reject("Je n'ai pas trouvé de channel vocal");
+                return ;
+            }
+            
+            const connection = PupeeterHelper.voiceConnection ? PupeeterHelper.voiceConnection : PupeeterHelper.createVoiceConnection(channel);
+                
+            connection.on(VoiceConnectionStatus.Ready, () => {
+                const receiver = connection.receiver; // Get the receiver from the connection
+                receiver.speaking.on('start', (userId) => {
+                    const opusStream = receiver.subscribe(userId, {
+                        end: {
+                            behavior: EndBehaviorType.AfterSilence,
+                            duration: 1000,
+                        },    
+                    });
+                    const encoder = new OpusEncoder.OpusEncoder(48000, 2);
+                    // console.log("1. Audio stream started");
+                    const writeStream = fs.createWriteStream(`./storage/audio/${userId}.pcm`);
+
+                    // Write the audio data to the fila
+                    opusStream.on('data', (chunk) => {
+                        // console.log(`2. Audio stream data received: ${decodedChunk.length} bytes`);
+                        try {
+                            const decodedChunk = encoder.decode(chunk);
+                            writeStream.write(decodedChunk);
+                        } catch (error) {
+                            console.error('Error decoding chunk: ', error);
+                        }                
+                    });
+                    opusStream.on('end', async () => {
+                        // console.log("5. Audio stream ended");
+                        writeStream.destroy();
+                        // Convert PCM to WebM  
+                        await PupeeterHelper.convertPCMToWebM(`./storage/audio/${userId}.pcm`, `./storage/audio/${userId}.webm`);
+                        opusStream.destroy();
+                        receiver.speaking.removeAllListeners('start');
+                        resolve(JSON.stringify({
+                            userId: userId,
+                            filename: `${userId}.webm`,
+                            content_url: `./storage/audio/${userId}.webm`,
+                        }))
+                    });
+
+                    opusStream.on('finish', () => {
+                        opusStream.destroy();
+                        receiver.speaking.removeAllListeners('start');
+                    });
+                    opusStream.on('error', (error) => {
+                        console.error('Error with opus stream: ', error);
+                        writeStream.destroy(error);
+                        opusStream.destroy();
+                    });
+                    writeStream.on('error', (error) => {
+                        console.error('Error with write stream: ', error);
+                        opusStream.destroy();
+                    });
+                });
+
+            });
+            await entersState(connection, VoiceConnectionStatus.Signalling, 30e3);
+        });
+    }
+
+    definition(): Shared.FunctionDefinition{
+        return {
+            "name": this.constructor.name,
+            "description": "Connection au serveur vocal",
+            "parameters": {
+            }
+        }
+    }
+
+    getEmbed(args: any) {
+        return {
+            "title": "Connection au serveur vocal",
+            "description": "Le bot va se connecter",
+        }
+    }
+
+}
+
+
+
+// For Play audio from a file
+// const player = createAudioPlayer();
+// const resource = createAudioResource('./storage/audio/recette-de-crepe.webm');
+// //play the song resource
+// console.log(resource);
+
+// player.play(resource);
+// connection.subscribe(player);
+// const receiver = connection.receiver
+// const audio = receiver.subscribe('555446593067679755', {
+//     end: {
+//         behavior: EndBehaviorType.AfterSilence,
+//         duration: 1
+//     }
+// })

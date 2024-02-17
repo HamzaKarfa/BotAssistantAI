@@ -1,0 +1,62 @@
+import {RequiredActionFunctionToolCall} from "openai/resources/beta/threads";
+import Tool from "../interfaces/Tool.js";
+import * as Shared from "openai/src/resources/shared";
+import GPTVision from "./GPTVision";
+import {EmbedData} from "discord.js";
+import PupeeterHelper from "./Browser/PupeeterHelper";
+
+type ScreenshotBrowserArgs = {
+    url: string,
+    prompt: string
+}
+
+export default class BrowserScreenshot implements Tool {
+    async handle(args: ScreenshotBrowserArgs): Promise<string> {
+        let output = ""
+        await PupeeterHelper.browse(args.url, async (page) => {
+            // Take a screenshot
+            const screenshot = await page.screenshot();
+
+            // Send the screenshot to the GPTVision tool
+            const visionToolCall = new GPTVision()
+            const visionOutput = await visionToolCall.handle({
+                imageUrl: `data:image/png;base64,${screenshot.toString("base64")}`,
+                prompt: args.prompt
+            })
+
+            if(visionOutput) {
+                output = "Voici la réponse de GPT Vision. N'essaye surtout pas d'inventer des détails, tu ne peux utiliser que ce qui est dit ici : \n\n#####\n" + visionOutput
+            }
+        })
+
+        return output
+    }
+
+    definition(): Shared.FunctionDefinition {
+        return {
+            name: "gpt_vision",
+            description: "Takes a screenshot of a web page and send it to GPTVision to get answers about it",
+            parameters: {
+                type: "object",
+                properties: {
+                    url: {
+                        type: "string",
+                        description: "The url to take a screenshot of"
+                    },
+                    prompt: {
+                        type: "string",
+                        description: "The prompt to ask about the screenshot. Format it for GPTVision : Remember that it only sees the image and has no context about the url. Be very precise and ask for details."
+                    }
+                },
+                required: ["url", "prompt"]
+            }
+        }
+    }
+
+    getEmbed(args: ScreenshotBrowserArgs): EmbedData {
+        return {
+            "title": "📸 Navigateur web",
+            "description": args.url
+        }
+    }
+}

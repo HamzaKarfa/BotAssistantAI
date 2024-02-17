@@ -1,0 +1,76 @@
+import * as process from "process";
+import {getJson as searchApiSearch} from "serpapi";
+import {RequiredActionFunctionToolCall} from "openai/resources/beta/threads";
+import Tool from "../interfaces/Tool.js";
+import * as Shared from "openai/src/resources/shared";
+import { debug } from "../utils/log.js";
+import { Sandbox } from '@e2b/sdk';
+import axios from 'axios';
+import fs from 'node:fs';
+
+
+export default class UploadAndReadPDF implements Tool {
+
+    async handle(toolCall: RequiredActionFunctionToolCall): Promise<string> {
+        debug("--- UploadAndReadPDF ---");
+        let { filename, content_url } = JSON.parse(toolCall.function.arguments);
+        const instructions = `How this cv looks like ?`;
+        
+        return new Promise(async (resolve, reject) => {
+            try {
+                const sandbox = await Sandbox.create();
+                debug("--- Sandbox created ---");
+                const file = await axios({
+                    method: 'get',
+                    url: content_url,
+                    responseType: 'arraybuffer',
+                });
+                if (file) {
+                    debug("--- File downloaded ---");
+                    const fileBuffer = Buffer.from(file.data);
+                    debug("--- Get buffer from file ---");
+                    const remotePath = await sandbox.uploadFile(fileBuffer, filename) ;
+                    debug("--- File uploaded ---");
+                    const fileContent = await sandbox.filesystem.read(remotePath);
+                    debug("--- File readed ---");
+                    await sandbox.close()
+                    debug("--- Sandbox closed ---");
+                    resolve(instructions + fileContent);
+                }
+            } catch (error) {
+                reject ("Error: " + error);
+            }
+        });
+    }
+
+    definition(): Shared.FunctionDefinition{
+        return {
+            "name": this.constructor.name,
+            "description": "Upload and read a pdf file",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "pdf file to upload and read"
+                    },
+                    "content_url": {
+                        "type": "string",
+                        "description": "url of the pdf file"
+                    }
+                },
+                "required": [
+                    "filename",
+                    "content_url"
+                ]
+            }
+        }
+    }
+
+    getEmbed(args: string) {
+        return {
+            "title": "Upload and read pdf file",
+            "description": "Upload this pdf file: " + JSON.parse(args || "{}").filename + " in the sandbox and read it."
+        }
+    }
+}

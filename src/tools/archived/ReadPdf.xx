@@ -1,0 +1,52 @@
+import * as Shared from "openai/src/resources/shared";
+import {debug} from "../../utils/log";
+import {EmbedData} from "discord.js";
+import BrowserOpenUrl from "../BrowserOpenUrl";
+
+type BrowserOpenUrlArgs = {
+    url: string,
+}
+
+export default class ReadPdf extends BrowserOpenUrl {
+    async handle(args: BrowserOpenUrlArgs): Promise<string> {
+        return super.handle({
+            url: "https://docs.google.com/viewer?url=" + args.url,
+            baseArgs: {
+                js_render: true,
+                premium_proxy: true,
+                proxy_country: "fr",
+                wait: 5000
+            }
+        })
+    }
+
+    definition(): Shared.FunctionDefinition {
+        return {
+            name: "read_pdf",
+            description: "Reads the text content of a pdf file",
+            parameters: {
+                type: "object",
+                properties: {
+                    "url": {
+                        type: "string",
+                        description: "The URL of the pdf file to read"
+                    },
+                    //query: {
+                    //    type: "string",
+                    //    description: "The optional query to search in the web page"
+                    //}
+                },
+                required: ["url"]
+            }
+        }
+    }
+
+    getEmbed(args: BrowserOpenUrlArgs): EmbedData {
+        debug("ReadPdf.getEmbed", args);
+
+        return {
+            "title": "🌎 Analyse Pdf",
+            "description": args.url
+        }
+    }
+}

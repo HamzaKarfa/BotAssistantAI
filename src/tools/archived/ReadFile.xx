@@ -1,0 +1,66 @@
+import * as process from "process";
+import {getJson as searchApiSearch} from "serpapi";
+import {RequiredActionFunctionToolCall} from "openai/resources/beta/threads";
+import Tool from "../interfaces/Tool.js";
+import * as Shared from "openai/src/resources/shared";
+import { debug } from "../utils/log.js";
+import { Sandbox } from '@e2b/sdk';
+import axios from 'axios';
+import fs from 'node:fs';
+
+
+export default class ReadFile implements Tool {
+
+    async handle(toolCall: RequiredActionFunctionToolCall): Promise<string> {
+        debug("--- ReadFile ---");
+        let { filename, content_url } = JSON.parse(toolCall.function.arguments);
+        
+        return new Promise(async (resolve, reject) => {
+            try {
+                const file = await axios({
+                    method: 'get',
+                    url: content_url,
+                    responseType: 'arraybuffer',
+                });
+                if (file) {
+                    debug("--- File downloaded ---");
+                    resolve(`You have to convert the file into plain text for reading it with code interpreter.\n
+                    There is the file : ${file.data}\n`);
+                }
+            } catch (error) {
+                reject ("Error: " + error);
+            }
+        });
+    }
+
+    definition(): Shared.FunctionDefinition{
+        return {
+            "name": this.constructor.name,
+            "description": "Read a file",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "File to read"
+                    },
+                    "content_url": {
+                        "type": "string",
+                        "description": "url of the file"
+                    }
+                },
+                "required": [
+                    "filename",
+                    "content_url"
+                ]
+            }
+        }
+    }
+
+    getEmbed(args: string) {
+        return {
+            "title": "Read a file",
+            "description": "Read this file: " + JSON.parse(args || "{}").filename
+        }
+    }
+}

@@ -1,0 +1,81 @@
+import {RequiredActionFunctionToolCall} from "openai/resources/beta/threads";
+import Tool from "../../interfaces/Tool";
+import * as Shared from "openai/src/resources/shared";
+import {convert} from "html-to-text";
+import PupeeterHelper from "../Browser/PupeeterHelper";
+import {EmbedData} from "discord.js";
+import {debug} from "../../utils/log"
+
+type WebBrowserArgs = {
+    url: string,
+    query?: string
+}
+
+export default class WebBrowser implements Tool {
+    async handle(args: WebBrowserArgs): Promise<string> {
+        //debug("WebBrowser.handle", args);
+
+        let output = "";
+
+        // Before everything, lets request the url and check if its html.
+        // If not, we can just return the content
+        const response = await fetch(args.url);
+        const contentType = response.headers.get("content-type");
+        if (!contentType?.includes("text/html")) {
+            output = await response.text();
+        }
+
+        await PupeeterHelper.browse(args.url, async (page) => {
+            debug("[WebBrowser] Browsing page")
+            const html = await page.evaluate(() => {
+                return new Promise((resolve) => {
+                    const timeout = setTimeout(() => {
+                        resolve(document.body.innerHTML);
+                    }, 30000);
+
+                    document.addEventListener("DOMContentLoaded", () => {
+                        resolve(document.body.innerHTML);
+                        clearTimeout(timeout);
+                    });
+                });
+            }) as string;
+
+            if (html) {
+                output = convert(html)
+            }
+        })
+
+        return output;
+    }
+
+    definition(): Shared.FunctionDefinition {
+        return {
+            name: this.constructor.name,
+            description: "Browse a web page. Use this tool to read the whole contents text of a web page and its links. "
+                + "This tool can also be used to read plain text discord attachments.",
+            parameters: {
+                type: "object",
+                properties: {
+                    "url": {
+                        type: "string",
+                        description: "The URL of the web page to browse"
+                    },
+                    //query: {
+                    //    type: "string",
+                    //    description: "The optional query to search in the web page"
+                    //}
+                },
+                required: ["url"]
+            }
+        }
+    }
+
+    getEmbed(args: WebBrowserArgs): EmbedData {
+        debug("WebBrowser.getEmbed", args);
+
+        return {
+            "title": "🌎 Navigateur web",
+            "description": args.url
+        }
+    }
+}

@@ -1,0 +1,27 @@
+import ReadPdf from "../ReadPdf";
+import BrowserOpenUrl from "../BrowserOpenUrl";
+
+describe('BrowserScreenshot tool', () => {
+    let browser: BrowserOpenUrl;
+
+    beforeAll(() => {
+        browser = new ReadPdf();
+    });
+
+    it('should return the text of a pdf file', async () => {
+        const result = await browser.handle({
+            url: "https://docs.google.com/viewer?url=https://cdn.discordapp.com/attachments/1181534499578839111/1199991347118080071/CV.pdf",
+            baseArgs: {
+                js_render: true,
+                premium_proxy: true,
+                proxy_country: "fr",
+                wait: 5000
+            }
+        });
+
+        console.log(result);
+
+        expect(result).toContain("CV");
+    }, 10000)
+
+});
